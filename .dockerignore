@@ -1,0 +1,14 @@
+node_modules
+.svelte-kit
+build
+data
+*.db
+*.db-shm
+*.db-wal
+.git
+.env
+.env.*
+!.env.example
+npm-debug.log
+Dockerfile
+.dockerignore

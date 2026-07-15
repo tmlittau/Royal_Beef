@@ -1,0 +1,193 @@
+import type { ScoringType } from '$lib/games';
+import type { FormatType, MatchKind } from './types';
+
+export type ResultEntry = {
+	competitorId: number;
+	placement: number; // 1 = best; for teams this is the team's rank
+	score?: number;
+	team?: number;
+};
+
+export type MatchResult = {
+	ref: string;
+	kind: MatchKind;
+	round: number;
+	group?: number;
+	entries: ResultEntry[];
+};
+
+export type RankInput = {
+	formatType: FormatType;
+	scoringType: ScoringType;
+	teamSize: number;
+	pointsScheme: number[]; // e.g. [3, 2, 1]
+	competitorIds: number[]; // seed order (tiebreak fallback)
+	matches: MatchResult[];
+};
+
+export type RankedResult = { competitorId: number; rank: number; points: number };
+
+const seedIndex = (ids: number[]) => new Map(ids.map((id, i) => [id, i]));
+
+function applyScheme(ordered: number[], scheme: number[]): RankedResult[] {
+	return ordered.map((id, i) => ({ competitorId: id, rank: i + 1, points: scheme[i] ?? 0 }));
+}
+
+function rankSingleMatch(input: RankInput): number[] {
+	const m = input.matches[0];
+	if (!m) return input.competitorIds;
+	return [...m.entries].sort((a, b) => a.placement - b.placement).map((e) => e.competitorId);
+}
+
+function rankCoop(input: RankInput): number[] {
+	const score = new Map<number, number>();
+	for (const m of input.matches) for (const e of m.entries) if (e.score !== undefined) score.set(e.competitorId, e.score);
+	const lowerIsBetter = input.scoringType === 'time';
+	const seed = seedIndex(input.competitorIds);
+	return [...input.competitorIds].sort((a, b) => {
+		const sa = score.get(a);
+		const sb = score.get(b);
+		if (sa === undefined && sb === undefined) return seed.get(a)! - seed.get(b)!;
+		if (sa === undefined) return 1;
+		if (sb === undefined) return -1;
+		if (sa !== sb) return lowerIsBetter ? sa - sb : sb - sa;
+		return seed.get(a)! - seed.get(b)!;
+	});
+}
+
+function rankRoundRobin(input: RankInput): number[] {
+	const wins = new Map<number, number>(input.competitorIds.map((id) => [id, 0]));
+	const beat = new Set<string>(); // "winner>loser"
+	for (const m of input.matches) {
+		if (m.entries.length !== 2) continue;
+		const [x, y] = m.entries;
+		const winner = x.placement <= y.placement ? x : y;
+		const loser = winner === x ? y : x;
+		wins.set(winner.competitorId, (wins.get(winner.competitorId) ?? 0) + 1);
+		beat.add(`${winner.competitorId}>${loser.competitorId}`);
+	}
+	const seed = seedIndex(input.competitorIds);
+	return [...input.competitorIds].sort((a, b) => {
+		const wd = (wins.get(b) ?? 0) - (wins.get(a) ?? 0);
+		if (wd) return wd;
+		if (beat.has(`${a}>${b}`)) return -1;
+		if (beat.has(`${b}>${a}`)) return 1;
+		return seed.get(a)! - seed.get(b)!;
+	});
+}
+
+function rankElimination(input: RankInput): number[] {
+	const finalM = input.matches.find((m) => m.kind === 'final');
+	const thirdM = input.matches.find((m) => m.ref === 'se-3rd');
+	const winnerOf = (m: MatchResult) => m.entries.find((e) => e.placement === 1)?.competitorId;
+	const loserOf = (m: MatchResult) =>
+		[...m.entries].sort((a, b) => b.placement - a.placement)[0]?.competitorId;
+
+	const placed: number[] = [];
+	const placedSet = new Set<number>();
+	const place = (id: number | undefined) => {
+		if (id !== undefined && !placedSet.has(id)) {
+			placed.push(id);
+			placedSet.add(id);
+		}
+	};
+	if (finalM) {
+		place(winnerOf(finalM));
+		place(loserOf(finalM));
+	}
+	if (thirdM) {
+		place(winnerOf(thirdM));
+		place(loserOf(thirdM));
+	}
+
+	// Everyone else: ordered by the round they were eliminated (later = better), then seed.
+	const exit = new Map<number, number>();
+	for (const m of input.matches) {
+		if (m === thirdM) continue;
+		for (const e of m.entries) {
+			if (e.placement !== 1) exit.set(e.competitorId, Math.max(exit.get(e.competitorId) ?? -1, m.round));
+		}
+	}
+	const seed = seedIndex(input.competitorIds);
+	const rest = input.competitorIds.filter((id) => !placedSet.has(id));
+	rest.sort((a, b) => {
+		const rd = (exit.get(b) ?? -1) - (exit.get(a) ?? -1);
+		return rd || seed.get(a)! - seed.get(b)!;
+	});
+	return [...placed, ...rest];
+}
+
+function rankHeats(input: RankInput): number[] {
+	const finalM = input.matches.find((m) => m.kind === 'final');
+	const finalists = finalM
+		? [...finalM.entries].sort((a, b) => a.placement - b.placement).map((e) => e.competitorId)
+		: [];
+	const finalistSet = new Set(finalists);
+	const heatPlace = new Map<number, number>();
+	for (const m of input.matches) if (m.kind === 'heat') for (const e of m.entries) heatPlace.set(e.competitorId, e.placement);
+	const seed = seedIndex(input.competitorIds);
+	const rest = input.competitorIds.filter((id) => !finalistSet.has(id));
+	rest.sort((a, b) => {
+		const pd = (heatPlace.get(a) ?? 99) - (heatPlace.get(b) ?? 99);
+		return pd || seed.get(a)! - seed.get(b)!;
+	});
+	return [...finalists, ...rest];
+}
+
+function rankTeams(input: RankInput): RankedResult[] {
+	const teamOf = new Map<number, number>();
+	for (const m of input.matches) for (const e of m.entries) if (e.team !== undefined) teamOf.set(e.competitorId, e.team);
+
+	const teamRank = new Map<number, number>();
+	if (input.matches.length === 1) {
+		for (const e of input.matches[0].entries) if (e.team !== undefined) teamRank.set(e.team, e.placement);
+	} else {
+		const wins = new Map<number, number>();
+		for (const m of input.matches) {
+			const wteam = m.entries.find((e) => e.placement === 1)?.team;
+			if (wteam !== undefined) wins.set(wteam, (wins.get(wteam) ?? 0) + 1);
+		}
+		const teams = [...new Set(teamOf.values())].sort((a, b) => (wins.get(b) ?? 0) - (wins.get(a) ?? 0));
+		teams.forEach((t, i) => teamRank.set(t, i + 1));
+	}
+
+	const seed = seedIndex(input.competitorIds);
+	const ordered = [...input.competitorIds].sort((a, b) => {
+		const ra = teamRank.get(teamOf.get(a) ?? -1) ?? 99;
+		const rb = teamRank.get(teamOf.get(b) ?? -1) ?? 99;
+		return ra - rb || seed.get(a)! - seed.get(b)!;
+	});
+
+	// Team rule: only the winning team scores; 6 points split (floored, min 1) among its members.
+	const winningTeam = [...teamRank.entries()].find(([, r]) => r === 1)?.[0];
+	const winningSize = [...teamOf.values()].filter((t) => t === winningTeam).length || 1;
+	const perMember = Math.max(1, Math.floor(6 / winningSize));
+	return ordered.map((id, i) => ({
+		competitorId: id,
+		rank: i + 1,
+		points: teamRank.get(teamOf.get(id) ?? -1) === 1 ? perMember : 0
+	}));
+}
+
+/** Full ranking + competition points for a completed game. */
+export function rankGame(input: RankInput): RankedResult[] {
+	if (input.formatType === 'team_match') return rankTeams(input);
+	let ordered: number[];
+	switch (input.formatType) {
+		case 'coop_score':
+			ordered = rankCoop(input);
+			break;
+		case 'round_robin':
+			ordered = rankRoundRobin(input);
+			break;
+		case 'single_elimination':
+			ordered = rankElimination(input);
+			break;
+		case 'heats_final':
+			ordered = rankHeats(input);
+			break;
+		default:
+			ordered = rankSingleMatch(input);
+	}
+	return applyScheme(ordered, input.pointsScheme);
+}

@@ -1,0 +1,24 @@
+services:
+  app:
+    build: .
+    image: royal-beef
+    container_name: royal-beef
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # DB + cover art live on the mounted volume so they survive rebuilds.
+      DATABASE_URL: /app/data/royalbeef.db
+      COVERS_DIR: /app/data/covers
+      HOST: 0.0.0.0
+      PORT: "3000"
+      # Required by adapter-node so SvelteKit knows its own origin — without this,
+      # its CSRF protection rejects all form submissions with a 403. Change this to
+      # the URL you actually open the app at (e.g. http://192.168.1.x:3000 on a LAN).
+      ORIGIN: http://localhost:3000
+      BODY_SIZE_LIMIT: 10M
+    volumes:
+      - royalbeef-data:/app/data
+
+volumes:
+  royalbeef-data:
