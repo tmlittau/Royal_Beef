@@ -1,7 +1,7 @@
 import { db, schema } from '$lib/server/db';
 import { parseGameForm } from '$lib/server/gameForm';
 import { error, fail, redirect } from '@sveltejs/kit';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ params }) => {
@@ -44,6 +44,20 @@ export const actions: Actions = {
 
 	delete: async ({ params }) => {
 		const id = Number(params.id);
+		// A game used in a competition is referenced by competition_games (FK). Deleting it
+		// would throw (foreign_keys=ON) and erase the name from past results — block it instead.
+		const used =
+			db
+				.select({ n: sql<number>`count(*)` })
+				.from(schema.competitionGames)
+				.where(eq(schema.competitionGames.gameId, id))
+				.get()?.n ?? 0;
+		if (used > 0) {
+			return fail(400, {
+				deleteError:
+					"This game has been used in a competition, so it can't be deleted (that would break past results). You can edit it instead."
+			});
+		}
 		db.delete(schema.games).where(eq(schema.games.id, id)).run();
 		throw redirect(303, '/library');
 	}

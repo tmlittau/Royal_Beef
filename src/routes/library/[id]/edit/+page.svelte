@@ -25,7 +25,13 @@
 <div class="danger-zone">
 	<div class="stack">
 		<strong>Delete this game</strong>
-		<span class="faint">Removes it from the library. Past competition results are unaffected.</span>
+		<span class="faint">
+			Removes it from the library. A game that's already been used in a competition can't be
+			deleted — that would break past results.
+		</span>
+		{#if form?.deleteError}
+			<span class="delerr">{form.deleteError}</span>
+		{/if}
 	</div>
 	<form
 		method="POST"
@@ -53,6 +59,10 @@
 	}
 	.back:hover {
 		color: var(--text);
+	}
+	.delerr {
+		color: #ff7089;
+		font-size: 0.85rem;
 	}
 	.danger-zone {
 		display: flex;

@@ -1,5 +1,9 @@
-import { slugifyKey, type GameFormInitial, type StatRow } from '$lib/games';
+import { MODES, slugifyKey, type GameFormInitial, type GameMode, type StatRow } from '$lib/games';
 import { z } from 'zod';
+
+// Derive the valid modes from the shared MODES list so this never drifts out of sync
+// when a new mode is added (e.g. one_vs_all).
+const modeEnum = z.enum(MODES.map((m) => m.value) as [GameMode, ...GameMode[]]);
 
 const statDefSchema = z.object({
 	label: z.string().trim().min(1),
@@ -23,10 +27,8 @@ const gameSchema = z
 		minPlayers: z.number().int().min(1).max(64),
 		maxPlayers: z.number().int().min(1).max(64),
 		defaultRoundMinutes: z.number().int().min(1).max(240),
-		supportedModes: z
-			.array(z.enum(['ffa', '1v1', 'teams', 'coop_score']))
-			.min(1, 'Pick at least one mode'),
-		defaultMode: z.enum(['ffa', '1v1', 'teams', 'coop_score']),
+		supportedModes: z.array(modeEnum).min(1, 'Pick at least one mode'),
+		defaultMode: modeEnum,
 		teamSize: z.number().int().min(2).max(16).nullable(),
 		scoringType: z.enum(['placement', 'score', 'time']),
 		notes: z.string().trim().max(500).nullable(),
