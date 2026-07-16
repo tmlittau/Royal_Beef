@@ -304,6 +304,23 @@ function coopScore(ids: number[], maxPlayers: number): StrategyResult {
 	};
 }
 
+/** One-vs-all: everyone takes a turn as the lone player (team 0) against the pack (team 1). */
+function oneVsAll(ids: number[]): StrategyResult {
+	const matches: MatchSpec[] = ids.map((soloId, i) => ({
+		ref: `solo-${i}`,
+		round: i,
+		label: `Solo round ${i + 1}`,
+		slots: [comp(soloId, 0), ...ids.filter((id) => id !== soloId).map((id) => comp(id, 1))],
+		bestOf: 1,
+		kind: 'solo'
+	}));
+	return {
+		matches,
+		rationale: `Everyone takes a turn solo against the pack — ${matches.length} rounds.`,
+		config: { rounds: matches.length }
+	};
+}
+
 /* ------------------------------------------------------------------ *
  * Selection + planning
  * ------------------------------------------------------------------ */
@@ -315,6 +332,7 @@ function isPairwise(ctx: FormatContext): boolean {
 export function eligibleFormats(ctx: FormatContext): FormatType[] {
 	const n = ctx.competitorIds.length;
 	if (ctx.mode === 'coop_score') return ['coop_score'];
+	if (ctx.mode === 'one_vs_all') return ['one_vs_all'];
 	if (ctx.mode === 'teams') return ['team_match'];
 	if (isPairwise(ctx)) return ['round_robin', 'single_elimination'];
 	if (n <= ctx.maxPlayers) return ['single_match'];
@@ -325,6 +343,7 @@ export function eligibleFormats(ctx: FormatContext): FormatType[] {
 export function selectFormat(ctx: FormatContext): FormatType {
 	const n = ctx.competitorIds.length;
 	if (ctx.mode === 'coop_score') return 'coop_score';
+	if (ctx.mode === 'one_vs_all') return 'one_vs_all';
 	if (ctx.mode === 'teams') return 'team_match';
 	if (isPairwise(ctx)) {
 		const rrMinutes = ((n * (n - 1)) / 2) * ctx.roundMinutes;
@@ -364,6 +383,9 @@ export function planFormat(ctx: FormatContext): FormatPlan {
 			break;
 		case 'coop_score':
 			result = coopScore(ids, ctx.maxPlayers);
+			break;
+		case 'one_vs_all':
+			result = oneVsAll(ids);
 			break;
 		default:
 			result = singleMatch(ids, bestOf);

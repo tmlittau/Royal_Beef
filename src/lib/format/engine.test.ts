@@ -49,6 +49,10 @@ describe('selectFormat', () => {
 	it('co-op → coop score', () => {
 		expect(selectFormat(ctx({ n: 4, mode: 'coop_score', maxPlayers: 4 }))).toBe('coop_score');
 	});
+	it('one-vs-all → one vs all (only option)', () => {
+		expect(selectFormat(ctx({ n: 4, mode: 'one_vs_all', maxPlayers: 4 }))).toBe('one_vs_all');
+		expect(eligibleFormats(ctx({ n: 4, mode: 'one_vs_all', maxPlayers: 4 }))).toEqual(['one_vs_all']);
+	});
 	it('offers RR and elimination as alternatives for pairwise', () => {
 		expect(eligibleFormats(ctx({ n: 6, mode: '1v1', maxPlayers: 2 }))).toEqual([
 			'round_robin',
@@ -157,6 +161,28 @@ describe('coop_score', () => {
 	it('N=3, M=4 → 1 score run', () => {
 		const plan = planFormat(ctx({ n: 3, mode: 'coop_score', maxPlayers: 4 }));
 		expect(plan.matches).toHaveLength(1);
+	});
+});
+
+describe('one_vs_all', () => {
+	it('N=4 → 4 solo rounds; each player is the lone one exactly once, everyone plays every round', () => {
+		const plan = planFormat(ctx({ n: 4, mode: 'one_vs_all', maxPlayers: 4 }));
+		expect(plan.formatType).toBe('one_vs_all');
+		expect(plan.matches).toHaveLength(4);
+		// everyone appears in every round
+		for (const count of appearances(plan).values()) expect(count).toBe(4);
+		// each round: exactly one solo (team 0) vs the rest (team 1)
+		const solos: number[] = [];
+		for (const m of plan.matches) {
+			expect(m.kind).toBe('solo');
+			const teams = m.slots.map((s) => (s.kind === 'competitor' ? s.team : undefined));
+			expect(teams.filter((t) => t === 0)).toHaveLength(1);
+			expect(teams.filter((t) => t === 1)).toHaveLength(3);
+			const solo = m.slots.find((s) => s.kind === 'competitor' && s.team === 0);
+			if (solo && solo.kind === 'competitor') solos.push(solo.competitorId);
+		}
+		// every competitor is the solo exactly once
+		expect(new Set(solos).size).toBe(4);
 	});
 });
 

@@ -7,7 +7,8 @@ export type FormatType =
 	| 'double_elimination'
 	| 'heats_final'
 	| 'team_match'
-	| 'coop_score';
+	| 'coop_score'
+	| 'one_vs_all';
 
 /** A participant slot in a generated match. Concrete competitor, or a reference resolved from results. */
 export type MatchSlot =
@@ -17,7 +18,7 @@ export type MatchSlot =
 	| { kind: 'heatPlace'; ref: string; place: number }
 	| { kind: 'bye' };
 
-export type MatchKind = 'ffa' | 'duel' | 'team' | 'heat' | 'final' | 'score';
+export type MatchKind = 'ffa' | 'duel' | 'team' | 'heat' | 'final' | 'score' | 'solo';
 
 /** One materializable match produced by the engine (before persistence). */
 export type MatchSpec = {

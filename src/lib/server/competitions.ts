@@ -46,6 +46,25 @@ export function createCompetition(input: CreateCompetitionInput): number {
 	});
 }
 
+/**
+ * Stop a competition before every game is played: mark it finished so the results view
+ * evaluates the standings from whatever games have been scored so far. Returns false if it
+ * wasn't running (already finished / not found).
+ */
+export function endCompetitionEarly(competitionId: number): boolean {
+	const comp = db
+		.select({ status: schema.competitions.status })
+		.from(schema.competitions)
+		.where(eq(schema.competitions.id, competitionId))
+		.get();
+	if (!comp || comp.status === 'finished') return false;
+	db.update(schema.competitions)
+		.set({ status: 'finished', finishedAt: new Date(), currentPickerId: null })
+		.where(eq(schema.competitions.id, competitionId))
+		.run();
+	return true;
+}
+
 export type StandingRow = {
 	id: number;
 	name: string;

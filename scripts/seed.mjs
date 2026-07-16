@@ -79,7 +79,8 @@ const GAMES = [
 	['Rock of Ages 3', 2, 4, 6, ['ffa'], 'ffa', null, 'placement', [count('Wins')], 'Boulder-rolling tower defense.'],
 	['WWE 2K Battlegrounds', 2, 4, 6, ['1v1', 'ffa'], '1v1', null, 'placement', [count('Wins')], 'Arcade wrestling.'],
 	['Overcooked', 1, 4, 5, ['coop_score'], 'coop_score', null, 'score', [score('High score')], 'Frantic co-op cooking.'],
-	['Overcooked 2', 1, 4, 5, ['coop_score'], 'coop_score', null, 'score', [score('High score')], 'More frantic co-op cooking.']
+	['Overcooked 2', 1, 4, 5, ['coop_score'], 'coop_score', null, 'score', [score('High score')], 'More frantic co-op cooking.'],
+	['Unspottable', 2, 4, 4, ['one_vs_all', 'ffa'], 'one_vs_all', null, 'placement', [count('Catches')], 'Spot the human among the robots — one hunter against the rest.']
 ];
 
 const db = new Database(url);

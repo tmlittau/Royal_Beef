@@ -13,6 +13,9 @@
 	const playedCount = $derived(data.games.filter((g) => g.status === 'finished').length);
 	const activeGame = $derived(data.games.find((g) => g.cgId === data.activeGameId) ?? null);
 	const allZero = $derived(data.standings.every((s) => s.points === 0));
+	const hasFinishedGame = $derived(data.games.some((g) => g.status === 'finished'));
+
+	let confirmEnd = $state(false);
 </script>
 
 <svelte:head>
@@ -53,7 +56,7 @@
 	</a>
 {:else if data.pick?.currentPickerId != null}
 	<a class="banner pick" href="/competition/{id}/pick">
-		<span>🎲 <strong>{data.pick.currentName}'s turn</strong> — pick game {data.pick.pickNumber} of {totalGames}</span>
+		<span>🎲 <strong>Next game</strong> — pick {data.pick.pickNumber} of {totalGames} (who's next?)</span>
 		<span class="arrow">→</span>
 	</a>
 {/if}
@@ -122,6 +125,21 @@
 
 <div class="foot">
 	<Button href="/" variant="ghost">← Dashboard</Button>
+	{#if status !== 'finished' && hasFinishedGame}
+		<div class="end">
+			{#if !confirmEnd}
+				<button type="button" class="endlink" onclick={() => (confirmEnd = true)}>
+					End competition early
+				</button>
+			{:else}
+				<form method="POST" action="?/finishEarly" class="endconfirm">
+					<span class="endq">End now &amp; crown the winner from games played so far?</span>
+					<button type="submit" class="endgo">End &amp; see results →</button>
+					<button type="button" class="endcancel" onclick={() => (confirmEnd = false)}>Cancel</button>
+				</form>
+			{/if}
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -305,6 +323,60 @@
 	}
 	.foot {
 		margin-top: 2rem;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		flex-wrap: wrap;
+	}
+	.end {
+		margin-left: auto;
+	}
+	.endlink {
+		background: none;
+		border: none;
+		color: var(--text-faint);
+		text-decoration: underline;
+		text-underline-offset: 2px;
+		cursor: pointer;
+		font-size: 0.82rem;
+	}
+	.endlink:hover {
+		color: var(--text-muted);
+	}
+	.endconfirm {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		flex-wrap: wrap;
+		justify-content: flex-end;
+	}
+	.endq {
+		font-size: 0.82rem;
+		color: var(--text-muted);
+	}
+	.endgo {
+		padding: 0.45rem 0.9rem;
+		font-size: 0.82rem;
+		font-weight: 600;
+		color: #ff7089;
+		background: #ff2d5518;
+		border: 1px solid #ff2d5555;
+		border-radius: var(--r-pill);
+		cursor: pointer;
+	}
+	.endgo:hover {
+		background: #ff2d5528;
+	}
+	.endcancel {
+		background: none;
+		border: none;
+		color: var(--text-faint);
+		cursor: pointer;
+		font-size: 0.82rem;
+	}
+	.endcancel:hover {
+		color: var(--text-muted);
 	}
 
 	@media (max-width: 800px) {

@@ -12,7 +12,19 @@
 
 	const players = $derived(match.participants.filter((p) => p.competitorId !== null));
 	const n = $derived(players.length);
-	const mode = $derived(match.kind === 'score' ? 'score' : match.kind === 'team' ? 'team' : 'rank');
+	const mode = $derived(
+		match.kind === 'score'
+			? 'score'
+			: match.kind === 'team'
+				? 'team'
+				: match.kind === 'solo'
+					? 'solo'
+					: 'rank'
+	);
+
+	// solo mode: team 0 is the lone player, team 1 is the pack
+	const soloPlayer = $derived(players.find((p) => (p.team ?? 0) === 0) ?? null);
+	const packPlayers = $derived(players.filter((p) => (p.team ?? 0) === 1));
 
 	// rank mode: finishing order of competitor ids
 	let order = $state<number[]>([]);
@@ -62,7 +74,7 @@
 
 	const complete = $derived.by(() => {
 		if (mode === 'score') return players.every((p) => (scores[p.competitorId!] ?? '') !== '');
-		if (mode === 'team') return winningTeam !== null;
+		if (mode === 'team' || mode === 'solo') return winningTeam !== null;
 		return n >= 1 && order.length >= n - 1;
 	});
 
@@ -81,10 +93,10 @@
 				stats: statsFor(p.competitorId!)
 			}));
 		}
-		if (mode === 'team') {
+		if (mode === 'team' || mode === 'solo') {
 			return players.map((p) => ({
 				competitorId: p.competitorId!,
-				placement: p.team === winningTeam ? 1 : 2,
+				placement: (p.team ?? 0) === winningTeam ? 1 : 2,
 				stats: statsFor(p.competitorId!)
 			}));
 		}
@@ -135,6 +147,38 @@
 		{#if order.length}
 			<button type="button" class="link" onclick={() => (order = [])}>Reset order</button>
 		{/if}
+	{:else if mode === 'solo'}
+		<p class="hint">Did the solo player beat the pack, or did the pack stop them?</p>
+		<div class="solo">
+			<button
+				type="button"
+				class="sidecard"
+				class:won={winningTeam === 0}
+				onclick={() => (winningTeam = 0)}
+			>
+				<span class="tlabel">Solo{winningTeam === 0 ? ' 🏆' : ''}</span>
+				{#if soloPlayer}
+					<span class="tm big">
+						<Avatar name={soloPlayer.name ?? '?'} color={soloPlayer.color ?? '#ff6a2b'} size={40} />
+						{soloPlayer.name}
+					</span>
+				{/if}
+			</button>
+			<span class="vs">vs</span>
+			<button
+				type="button"
+				class="sidecard"
+				class:won={winningTeam === 1}
+				onclick={() => (winningTeam = 1)}
+			>
+				<span class="tlabel">The pack{winningTeam === 1 ? ' 🏆' : ''}</span>
+				<div class="tmembers">
+					{#each packPlayers as p (p.competitorId)}
+						<span class="tm"><Avatar name={p.name ?? '?'} color={p.color ?? '#ff6a2b'} size={24} /> {p.name}</span>
+					{/each}
+				</div>
+			</button>
+		</div>
 	{:else if mode === 'team'}
 		<p class="hint">Tap the winning team.</p>
 		<div class="teams">
@@ -289,6 +333,40 @@
 	.teamcard.won {
 		border-color: #ff6a2b99;
 		background: var(--accent-soft);
+	}
+	.solo {
+		display: flex;
+		align-items: stretch;
+		gap: 0.7rem;
+		flex-wrap: wrap;
+	}
+	.sidecard {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		flex: 1;
+		min-width: 12rem;
+		padding: 0.9rem;
+		text-align: left;
+		background: var(--surface);
+		border: 1px solid var(--border-strong);
+		border-radius: var(--r-md);
+		cursor: pointer;
+		transition: all 0.15s var(--ease);
+	}
+	.sidecard.won {
+		border-color: #ff6a2b99;
+		background: var(--accent-soft);
+	}
+	.vs {
+		align-self: center;
+		font-family: var(--font-display);
+		font-weight: 700;
+		color: var(--text-faint);
+	}
+	.tm.big {
+		font-size: 1.05rem;
+		font-weight: 600;
 	}
 	.tlabel {
 		font-weight: 700;

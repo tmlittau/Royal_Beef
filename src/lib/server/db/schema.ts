@@ -122,7 +122,8 @@ export const competitionGames = sqliteTable('competition_games', {
 			'double_elimination',
 			'heats_final',
 			'team_match',
-			'coop_score'
+			'coop_score',
+			'one_vs_all'
 		]
 	}),
 	formatConfig: text('format_config', { mode: 'json' })

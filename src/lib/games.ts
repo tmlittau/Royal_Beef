@@ -1,6 +1,6 @@
 // Shared, client-safe constants + helpers for games and their properties.
 
-export type GameMode = 'ffa' | '1v1' | 'teams' | 'coop_score';
+export type GameMode = 'ffa' | '1v1' | 'teams' | 'coop_score' | 'one_vs_all';
 export type ScoringType = 'placement' | 'score' | 'time';
 export type StatType = 'number' | 'time' | 'count';
 export type Aggregate = 'sum' | 'max' | 'min' | 'avg';
@@ -9,7 +9,8 @@ export const MODES: { value: GameMode; label: string; hint: string }[] = [
 	{ value: 'ffa', label: 'Free-for-all', hint: 'Everyone for themselves' },
 	{ value: '1v1', label: '1 vs 1', hint: 'Two players head-to-head' },
 	{ value: 'teams', label: 'Teams', hint: 'Split into teams' },
-	{ value: 'coop_score', label: 'Co-op score', hint: 'Shared goal, best score wins' }
+	{ value: 'coop_score', label: 'Co-op score', hint: 'Shared goal, best score wins' },
+	{ value: 'one_vs_all', label: 'One vs all', hint: 'One player against everyone — everyone takes a turn' }
 ];
 
 export const SCORING_TYPES: { value: ScoringType; label: string; hint: string }[] = [

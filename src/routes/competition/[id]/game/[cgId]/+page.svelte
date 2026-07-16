@@ -20,7 +20,8 @@
 		double_elimination: 'Double elimination',
 		heats_final: 'Heats → grand final',
 		team_match: 'Team match',
-		coop_score: 'Score attack'
+		coop_score: 'Score attack',
+		one_vs_all: 'One vs all'
 	};
 
 	let selectedFormat = $state<FormatType | undefined>(

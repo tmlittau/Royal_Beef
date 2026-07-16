@@ -76,6 +76,36 @@ function rankRoundRobin(input: RankInput): number[] {
 	});
 }
 
+/**
+ * One-vs-all: everyone is the lone player exactly once. A player "wins a round" if they were
+ * the solo and beat the pack, or were in the pack when it stopped the solo. Rank by rounds won,
+ * then by the harder feat (winning your own solo round), then seed.
+ */
+function rankOneVsAll(input: RankInput): number[] {
+	const roundsWon = new Map<number, number>(input.competitorIds.map((id) => [id, 0]));
+	const soloWins = new Map<number, number>(input.competitorIds.map((id) => [id, 0]));
+	for (const m of input.matches) {
+		const solo = m.entries.find((e) => e.team === 0);
+		if (!solo) continue;
+		if (solo.placement === 1) {
+			roundsWon.set(solo.competitorId, (roundsWon.get(solo.competitorId) ?? 0) + 1);
+			soloWins.set(solo.competitorId, (soloWins.get(solo.competitorId) ?? 0) + 1);
+		} else {
+			for (const e of m.entries) {
+				if (e.team === 1) roundsWon.set(e.competitorId, (roundsWon.get(e.competitorId) ?? 0) + 1);
+			}
+		}
+	}
+	const seed = seedIndex(input.competitorIds);
+	return [...input.competitorIds].sort((a, b) => {
+		const rd = (roundsWon.get(b) ?? 0) - (roundsWon.get(a) ?? 0);
+		if (rd) return rd;
+		const sd = (soloWins.get(b) ?? 0) - (soloWins.get(a) ?? 0);
+		if (sd) return sd;
+		return seed.get(a)! - seed.get(b)!;
+	});
+}
+
 function rankElimination(input: RankInput): number[] {
 	const finalM = input.matches.find((m) => m.kind === 'final');
 	const thirdM = input.matches.find((m) => m.ref === 'se-3rd');
@@ -250,6 +280,9 @@ export function rankGame(input: RankInput): RankedResult[] {
 			break;
 		case 'round_robin':
 			ordered = rankRoundRobin(input);
+			break;
+		case 'one_vs_all':
+			ordered = rankOneVsAll(input);
 			break;
 		case 'single_elimination':
 			ordered = rankElimination(input);

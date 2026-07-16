@@ -46,6 +46,78 @@ describe('single_match', () => {
 	});
 });
 
+describe('one_vs_all', () => {
+	// Each player is the lone one once; "rounds won" = solo wins + pack wins.
+	const soloRounds: MatchResult[] = [
+		// 1 is solo and beats the pack
+		m({ ref: 's0', kind: 'solo', entries: [
+			{ competitorId: 1, placement: 1, team: 0 },
+			{ competitorId: 2, placement: 2, team: 1 },
+			{ competitorId: 3, placement: 2, team: 1 },
+			{ competitorId: 4, placement: 2, team: 1 }
+		] }),
+		// 2 is solo, the pack stops them
+		m({ ref: 's1', kind: 'solo', entries: [
+			{ competitorId: 2, placement: 2, team: 0 },
+			{ competitorId: 1, placement: 1, team: 1 },
+			{ competitorId: 3, placement: 1, team: 1 },
+			{ competitorId: 4, placement: 1, team: 1 }
+		] }),
+		// 3 is solo, the pack stops them
+		m({ ref: 's2', kind: 'solo', entries: [
+			{ competitorId: 3, placement: 2, team: 0 },
+			{ competitorId: 1, placement: 1, team: 1 },
+			{ competitorId: 2, placement: 1, team: 1 },
+			{ competitorId: 4, placement: 1, team: 1 }
+		] }),
+		// 4 is solo, the pack stops them
+		m({ ref: 's3', kind: 'solo', entries: [
+			{ competitorId: 4, placement: 2, team: 0 },
+			{ competitorId: 1, placement: 1, team: 1 },
+			{ competitorId: 2, placement: 1, team: 1 },
+			{ competitorId: 3, placement: 1, team: 1 }
+		] })
+	];
+
+	it('ranks by rounds won — winning solo + surviving every pack crowns player 1', () => {
+		const r = rankGame(input({ formatType: 'one_vs_all', matches: soloRounds }));
+		// 1 wins 4 rounds; 2/3/4 each win 2 pack rounds → tie broken by seed
+		expect(r.map((x) => [x.competitorId, x.points])).toEqual([
+			[1, 3],
+			[2, 2],
+			[3, 1],
+			[4, 0]
+		]);
+	});
+
+	it('the harder feat (winning your own solo round) breaks a rounds-won tie', () => {
+		const r = rankGame(
+			input({
+				formatType: 'one_vs_all',
+				matches: [
+					// 2 wins as solo
+					m({ ref: 'a', kind: 'solo', entries: [
+						{ competitorId: 2, placement: 1, team: 0 },
+						{ competitorId: 1, placement: 2, team: 1 },
+						{ competitorId: 3, placement: 2, team: 1 },
+						{ competitorId: 4, placement: 2, team: 1 }
+					] }),
+					// pack {1,3,4} each get a pack win → everyone ends on 1 round won
+					m({ ref: 'b', kind: 'solo', entries: [
+						{ competitorId: 2, placement: 2, team: 0 },
+						{ competitorId: 1, placement: 1, team: 1 },
+						{ competitorId: 3, placement: 1, team: 1 },
+						{ competitorId: 4, placement: 1, team: 1 }
+					] })
+				]
+			})
+		);
+		// all four have 1 round won, but 2 won it as the solo → 2 takes 1st
+		expect(r[0].competitorId).toBe(2);
+		expect(r.map((x) => x.points)).toEqual([3, 2, 1, 0]);
+	});
+});
+
 describe('round_robin', () => {
 	it('ranks by wins', () => {
 		// 1 beats everyone, 2 beats 3 and 4, 3 beats 4

@@ -16,10 +16,11 @@ services:
       CONTROLLERS_DIR: /app/data/controllers
       HOST: 0.0.0.0
       PORT: "3000"
-      # Required by adapter-node so SvelteKit knows its own origin — without this,
-      # its CSRF protection rejects all form submissions with a 403. Change this to
-      # the URL you actually open the app at (e.g. http://192.168.1.x:3000 on a LAN).
-      ORIGIN: http://localhost:3000
+      # Read from .env so the same compose file works on every machine. adapter-node needs
+      # it to know its own origin — without a matching value SvelteKit's CSRF check rejects
+      # every form submission with a 403. Set ORIGIN in .env to the URL you actually open the
+      # app at (e.g. http://192.168.1.x:3000 on your NAS); defaults to localhost for local runs.
+      ORIGIN: ${ORIGIN:-http://localhost:3000}
       BODY_SIZE_LIMIT: 10M
     volumes:
       - royalbeef-data:/app/data
