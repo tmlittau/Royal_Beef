@@ -1,9 +1,20 @@
-import { rankGame, type MatchResult, type ResultEntry } from '$lib/format/ranking';
+import {
+	applyDeciders,
+	rankGameWithTies,
+	type MatchResult,
+	type ResultEntry
+} from '$lib/format/ranking';
 import type { FormatType, MatchKind } from '$lib/format/types';
 import type { ScoringType } from '$lib/games';
 import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm';
 import { db, schema } from './db';
 import { refToText } from './materialize';
+
+function ordinal(n: number): string {
+	const s = ['th', 'st', 'nd', 'rd'];
+	const v = n % 100;
+	return n + (s[(v - 20) % 10] ?? s[v] ?? s[0]);
+}
 
 export type RunnerParticipant = {
 	pid: number;
@@ -183,6 +194,7 @@ export function saveMatchResult(matchId: number, entries: SaveEntry[]): void {
 			.select({
 				formatType: schema.competitionGames.formatType,
 				teamSize: schema.competitionGames.teamSize,
+				maxPlayers: schema.competitionGames.maxPlayers,
 				competitionId: schema.competitionGames.competitionId,
 				scoringType: schema.games.scoringType
 			})
@@ -235,25 +247,71 @@ export function saveMatchResult(matchId: number, entries: SaveEntry[]): void {
 			entriesByMatch.set(p.matchId, arr);
 		}
 
-		const matchResults: MatchResult[] = matchRows.map((mr) => ({
-			ref: mr.bracketSlot ?? '',
-			kind: (mr.kind ?? 'ffa') as MatchKind,
-			round: mr.roundIndex,
-			group: mr.groupIndex ?? undefined,
-			entries: entriesByMatch.get(mr.id) ?? []
-		}));
+		const pointsScheme = competition?.pointsScheme ?? [3, 2, 1];
+		const isDecider = (slot: string | null) => (slot ?? '').startsWith('decider-');
+		const toResults = (rows: typeof matchRows): MatchResult[] =>
+			rows.map((mr) => ({
+				ref: mr.bracketSlot ?? '',
+				kind: (mr.kind ?? 'ffa') as MatchKind,
+				round: mr.roundIndex,
+				group: mr.groupIndex ?? undefined,
+				entries: entriesByMatch.get(mr.id) ?? []
+			}));
 
-		const ranked = rankGame({
+		const regularMatches = matchRows.filter((m) => !isDecider(m.bracketSlot));
+		const deciderMatches = matchRows.filter((m) => isDecider(m.bracketSlot));
+
+		const { results, ties } = rankGameWithTies({
 			formatType: cg.formatType as FormatType,
 			scoringType: cg.scoringType as ScoringType,
 			teamSize: cg.teamSize ?? 2,
-			pointsScheme: competition?.pointsScheme ?? [3, 2, 1],
+			pointsScheme,
 			competitorIds: competitorRows.map((c) => c.id),
-			matches: matchResults
+			matches: toResults(regularMatches)
 		});
 
+		// A tie is only settleable if the tied players fit into one decider match.
+		const decidable = ties.filter((t) => t.competitorIds.length <= cg.maxPlayers);
+
+		if (decidable.length > 0 && deciderMatches.length === 0) {
+			// Spawn sudden-death deciders and stay active — the runner surfaces them next.
+			const baseOrder = Math.max(0, ...matchRows.map((m) => m.orderIndex)) + 1;
+			decidable.forEach((tie, i) => {
+				const twoWay = tie.competitorIds.length === 2;
+				const row = tx
+					.insert(schema.matches)
+					.values({
+						competitionGameId: cgId,
+						roundIndex: 100,
+						bracketSlot: `decider-${i}`,
+						label: `Tiebreaker for ${ordinal(tie.minPosition)}${twoWay ? ' · best of 3' : ''}`,
+						kind: twoWay ? 'duel' : 'ffa',
+						bestOf: twoWay ? 3 : 1,
+						orderIndex: baseOrder + i,
+						status: 'pending'
+					})
+					.returning({ id: schema.matches.id })
+					.get();
+				for (const cid of tie.competitorIds) {
+					tx.insert(schema.matchParticipants).values({ matchId: row.id, competitorId: cid }).run();
+				}
+			});
+			return;
+		}
+
+		// Finalize: fold decider outcomes into the base ranking, then write results.
+		const deciderOrders = deciderMatches.map((dm) =>
+			(entriesByMatch.get(dm.id) ?? [])
+				.slice()
+				.sort((a, b) => a.placement - b.placement)
+				.map((e) => e.competitorId)
+		);
+		const finalResults = deciderOrders.length
+			? applyDeciders(results, deciderOrders, pointsScheme)
+			: results;
+
 		tx.delete(schema.gameResults).where(eq(schema.gameResults.competitionGameId, cgId)).run();
-		for (const r of ranked) {
+		for (const r of finalResults) {
 			tx.insert(schema.gameResults)
 				.values({
 					competitionGameId: cgId,

@@ -52,7 +52,7 @@
 			</div>
 			<div class="chips row">
 				<Badge tone="cool">◆ Database connected</Badge>
-				<Badge tone="accent">Phase 4 · format engine</Badge>
+				<Badge tone="accent">Phase 6 · tiebreaks</Badge>
 			</div>
 			<p class="faint hint">
 				{#if data.gameCount === 0}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { rankGame, type MatchResult, type RankInput } from './ranking';
+import { applyDeciders, rankGame, rankGameWithTies, type MatchResult, type RankInput } from './ranking';
 
 function input(over: Partial<RankInput>): RankInput {
 	return {
@@ -144,6 +144,66 @@ describe('team_match', () => {
 		];
 		const r = rankGame(input({ formatType: 'team_match', teamSize: 3, competitorIds: [1, 2, 3, 4, 5, 6], matches: three }));
 		expect(new Map(r.map((x) => [x.competitorId, x.points])).get(1)).toBe(2);
+	});
+});
+
+describe('tie detection (rankGameWithTies)', () => {
+	it('flags a round-robin 3-way cycle for the podium', () => {
+		// A>B>C>A: everyone 1 win → genuine 3-way tie for positions 1–3
+		const duels: MatchResult[] = [
+			m({ ref: 'a', kind: 'duel', entries: [{ competitorId: 1, placement: 1 }, { competitorId: 2, placement: 2 }] }),
+			m({ ref: 'b', kind: 'duel', entries: [{ competitorId: 2, placement: 1 }, { competitorId: 3, placement: 2 }] }),
+			m({ ref: 'c', kind: 'duel', entries: [{ competitorId: 3, placement: 1 }, { competitorId: 1, placement: 2 }] })
+		];
+		const { ties } = rankGameWithTies(input({ formatType: 'round_robin', competitorIds: [1, 2, 3], matches: duels }));
+		expect(ties).toHaveLength(1);
+		expect(new Set(ties[0].competitorIds)).toEqual(new Set([1, 2, 3]));
+		expect(ties[0].minPosition).toBe(1);
+	});
+	it('flags a cyclic equal-wins tie for the lower podium spots', () => {
+		// 1 beats everyone (3 wins); 2,3,4 form a cycle (each 1 win) → tie for 2nd–4th
+		const duels: MatchResult[] = [
+			m({ ref: 'a', kind: 'duel', entries: [{ competitorId: 1, placement: 1 }, { competitorId: 2, placement: 2 }] }),
+			m({ ref: 'b', kind: 'duel', entries: [{ competitorId: 1, placement: 1 }, { competitorId: 3, placement: 2 }] }),
+			m({ ref: 'c', kind: 'duel', entries: [{ competitorId: 1, placement: 1 }, { competitorId: 4, placement: 2 }] }),
+			m({ ref: 'd', kind: 'duel', entries: [{ competitorId: 2, placement: 1 }, { competitorId: 3, placement: 2 }] }),
+			m({ ref: 'e', kind: 'duel', entries: [{ competitorId: 3, placement: 1 }, { competitorId: 4, placement: 2 }] }),
+			m({ ref: 'f', kind: 'duel', entries: [{ competitorId: 4, placement: 1 }, { competitorId: 2, placement: 2 }] })
+		];
+		const { results, ties } = rankGameWithTies(input({ formatType: 'round_robin', matches: duels }));
+		expect(results[0].competitorId).toBe(1); // 1 wins outright
+		const tie = ties.find((t) => t.competitorIds.length === 3);
+		expect(tie).toBeTruthy();
+		expect(tie!.minPosition).toBe(2);
+	});
+	it('does not flag a tie that only affects non-scoring positions', () => {
+		// 1>2>3 clear; 4 and 5 tie for 4th/5th (no points) → not flagged
+		const duels: MatchResult[] = [
+			m({ ref: 'a', kind: 'duel', entries: [{ competitorId: 1, placement: 1 }, { competitorId: 2, placement: 2 }] }),
+			m({ ref: 'b', kind: 'duel', entries: [{ competitorId: 1, placement: 1 }, { competitorId: 3, placement: 2 }] }),
+			m({ ref: 'c', kind: 'duel', entries: [{ competitorId: 2, placement: 1 }, { competitorId: 3, placement: 2 }] }),
+			m({ ref: 'd', kind: 'duel', entries: [{ competitorId: 1, placement: 1 }, { competitorId: 4, placement: 2 }] }),
+			m({ ref: 'e', kind: 'duel', entries: [{ competitorId: 2, placement: 1 }, { competitorId: 4, placement: 2 }] }),
+			m({ ref: 'f', kind: 'duel', entries: [{ competitorId: 3, placement: 1 }, { competitorId: 4, placement: 2 }] })
+		];
+		// 1→3 wins, 2→2, 3→1, 4→0. No ties at all here, so also assert single_match never ties:
+		const { ties } = rankGameWithTies(input({ formatType: 'single_match', matches: [m({ entries: [
+			{ competitorId: 1, placement: 1 }, { competitorId: 2, placement: 2 }, { competitorId: 3, placement: 3 }, { competitorId: 4, placement: 4 }
+		] })] }));
+		expect(ties).toHaveLength(0);
+		void duels;
+	});
+});
+
+describe('applyDeciders', () => {
+	it('re-orders a tied group by the decider result', () => {
+		// base order 1,2,3,4 but 2 & 3 were tied; decider says 3 beat 2
+		const base = rankGame(input({ matches: [m({ entries: [
+			{ competitorId: 1, placement: 1 }, { competitorId: 2, placement: 2 }, { competitorId: 3, placement: 3 }, { competitorId: 4, placement: 4 }
+		] })] }));
+		const out = applyDeciders(base, [[3, 2]], [3, 2, 1]);
+		expect(out.map((x) => x.competitorId)).toEqual([1, 3, 2, 4]);
+		expect(out.map((x) => x.points)).toEqual([3, 2, 1, 0]);
 	});
 });
 

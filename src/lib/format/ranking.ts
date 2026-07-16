@@ -169,6 +169,77 @@ function rankTeams(input: RankInput): RankedResult[] {
 	}));
 }
 
+export type TieGroup = { competitorIds: number[]; minPosition: number };
+
+/**
+ * The "earned" standing key per competitor for formats where genuine ties can occur:
+ * equal wins (round robin) or equal score (co-op). Same key ⇒ tied. Other formats can't tie
+ * (distinct placements / bracket results), so they return null.
+ */
+function earnedKey(input: RankInput): Map<number, number> | null {
+	if (input.formatType === 'round_robin') {
+		const wins = new Map<number, number>(input.competitorIds.map((id) => [id, 0]));
+		for (const m of input.matches) {
+			if (m.entries.length !== 2) continue;
+			const [x, y] = m.entries;
+			const w = x.placement <= y.placement ? x.competitorId : y.competitorId;
+			wins.set(w, (wins.get(w) ?? 0) + 1);
+		}
+		return wins;
+	}
+	if (input.formatType === 'coop_score') {
+		const score = new Map<number, number>();
+		for (const m of input.matches) for (const e of m.entries) if (e.score !== undefined) score.set(e.competitorId, e.score);
+		return new Map(input.competitorIds.map((id) => [id, score.get(id) ?? Number.NEGATIVE_INFINITY]));
+	}
+	return null;
+}
+
+/** Ranking plus any ties that land on a scoring (podium) position and need a decider. */
+export function rankGameWithTies(input: RankInput): { results: RankedResult[]; ties: TieGroup[] } {
+	const results = rankGame(input);
+	const key = earnedKey(input);
+	if (!key) return { results, ties: [] };
+
+	const scoringPositions = input.pointsScheme.length;
+	const rankOf = new Map(results.map((r) => [r.competitorId, r.rank]));
+	const groups = new Map<number, number[]>();
+	for (const r of results) {
+		const k = key.get(r.competitorId) ?? 0;
+		const arr = groups.get(k) ?? [];
+		arr.push(r.competitorId);
+		groups.set(k, arr);
+	}
+
+	const ties: TieGroup[] = [];
+	for (const ids of groups.values()) {
+		if (ids.length < 2) continue;
+		const minPosition = Math.min(...ids.map((id) => rankOf.get(id)!));
+		if (minPosition <= scoringPositions) ties.push({ competitorIds: ids, minPosition });
+	}
+	return { results, ties };
+}
+
+/** Re-order each tied group by its played-off decider order, then re-apply points by position. */
+export function applyDeciders(
+	base: RankedResult[],
+	deciderOrders: number[][],
+	pointsScheme: number[]
+): RankedResult[] {
+	const order = base.map((r) => r.competitorId);
+	for (const deciderOrder of deciderOrders) {
+		const group = new Set(deciderOrder);
+		const positions: number[] = [];
+		order.forEach((id, i) => {
+			if (group.has(id)) positions.push(i);
+		});
+		positions.forEach((pos, k) => {
+			order[pos] = deciderOrder[k];
+		});
+	}
+	return order.map((id, i) => ({ competitorId: id, rank: i + 1, points: pointsScheme[i] ?? 0 }));
+}
+
 /** Full ranking + competition points for a completed game. */
 export function rankGame(input: RankInput): RankedResult[] {
 	if (input.formatType === 'team_match') return rankTeams(input);

@@ -1,11 +1,14 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+	import Avatar from '$lib/components/Avatar.svelte';
 	import Badge from '$lib/components/Badge.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import Card from '$lib/components/Card.svelte';
-	import { untrack } from 'svelte';
+	import MatchResult from '$lib/components/MatchResult.svelte';
 	import { modeLabel } from '$lib/games';
 	import type { DisplayMatch } from '$lib/format/display';
 	import type { FormatType } from '$lib/format/types';
+	import type { RunnerParticipant } from '$lib/server/results';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -33,6 +36,10 @@
 		}
 		return [...map.entries()].sort((a, b) => a[0] - b[0]);
 	}
+
+	const medal = (place: number | null) => (place && place <= 3 ? ['🥇', '🥈', '🥉'][place - 1] : place);
+	const byPlace = (ps: RunnerParticipant[]) =>
+		[...ps].sort((a, b) => (a.placement ?? 99) - (b.placement ?? 99));
 </script>
 
 <svelte:head>
@@ -41,14 +48,14 @@
 
 <div class="stack head">
 	<span class="eyebrow">
-		<a class="back" href="/competition/{data.cg.competitionId}">Competition</a> · Set up game
+		<a class="back" href="/competition/{data.cg.competitionId}">Competition</a> ·
+		{data.view === 'finished' ? 'Result' : data.view === 'run' ? 'Playing' : 'Set up game'}
 	</span>
 	<h1>{data.cg.name}</h1>
 	<div class="chips">
 		<Badge tone="accent">{modeLabel(data.cg.mode)}</Badge>
 		<Badge>Up to {data.cg.maxPlayers} players</Badge>
 		<Badge>~{data.cg.roundMinutes}m / round</Badge>
-		<Badge>{data.competitors.length} competitors</Badge>
 	</div>
 </div>
 
@@ -62,16 +69,8 @@
 			<span class="field-label">Format</span>
 			<div class="options">
 				{#each data.plans as p (p.formatType)}
-					<button
-						type="button"
-						class="opt"
-						class:on={p.formatType === plan.formatType}
-						onclick={() => (selectedFormat = p.formatType)}
-					>
-						<span class="opt-name">
-							{FORMAT_LABELS[p.formatType]}
-							{#if p.formatType === data.auto}<span class="rec">★</span>{/if}
-						</span>
+					<button type="button" class="opt" class:on={p.formatType === plan.formatType} onclick={() => (selectedFormat = p.formatType)}>
+						<span class="opt-name">{FORMAT_LABELS[p.formatType]}{#if p.formatType === data.auto}<span class="rec"> ★</span>{/if}</span>
 						<span class="opt-est">{p.matchCount} matches · ~{p.estimateMinutes}m</span>
 					</button>
 				{/each}
@@ -84,9 +83,7 @@
 			<div class="stack">
 				<strong class="fmt-name">
 					{FORMAT_LABELS[plan.formatType]}
-					{#if plan.formatType === data.auto && data.plans.length > 1}
-						<Badge tone="cool">Recommended</Badge>
-					{/if}
+					{#if plan.formatType === data.auto && data.plans.length > 1}<Badge tone="cool">Recommended</Badge>{/if}
 				</strong>
 				<span class="muted">{plan.rationale}</span>
 			</div>
@@ -101,9 +98,9 @@
 		{#each groupByRound(plan.display) as [round, matches] (round)}
 			<div class="round-group">
 				{#each matches as m (m.label + m.parts.join())}
-					<div class="match">
+					<div class="pmatch">
 						<span class="mlabel">{m.label}</span>
-						<div class="parts" class:duel={m.parts.length === 2}>
+						<div class="parts">
 							{#each m.parts as part, i (i)}
 								<span class="part">{part}</span>
 								{#if m.parts.length === 2 && i === 0}<span class="vs">vs</span>{/if}
@@ -120,48 +117,82 @@
 		<Button type="submit" size="lg">Confirm &amp; set up →</Button>
 		<Button href="/competition/{data.cg.competitionId}" variant="ghost" size="lg">Back</Button>
 	</form>
-{:else}
-	<Card padding="1.4rem" glow>
-		<div class="summary">
-			<div class="stack">
-				<strong class="fmt-name">
-					{data.cg.formatType ? FORMAT_LABELS[data.cg.formatType] : 'Set up'}
-					<Badge tone="cool">✓ Ready</Badge>
-				</strong>
-				<span class="muted">{data.matches.length} matches · ~{data.cg.estimatedMinutes}m estimated</span>
-			</div>
-		</div>
-	</Card>
+{:else if data.view === 'run'}
+	{@const current = data.runner.matches.find((m) => m.id === data.runner.currentMatchId)}
+	<div class="progress">
+		<Badge tone="accent">{FORMAT_LABELS[data.cg.formatType ?? 'single_match']}</Badge>
+		<span class="muted">{data.runner.done} of {data.runner.total} matches done</span>
+	</div>
 
-	<div class="rounds">
-		{#each groupByRound(data.matches) as [round, matches] (round)}
-			<div class="round-group">
-				{#each matches as m (m.label + m.parts.join())}
-					<div class="match">
-						<span class="mlabel">{m.label}</span>
-						<div class="parts" class:duel={m.parts.length === 2}>
-							{#each m.parts as part, i (i)}
-								<span class="part">{part}</span>
-								{#if m.parts.length === 2 && i === 0}<span class="vs">vs</span>{/if}
-							{/each}
-						</div>
+	{#if current?.label.startsWith('Tiebreaker')}
+		<div class="tiebreak">
+			⚔️ <strong>Sudden-death tiebreaker.</strong> The standings can't split these players — play it off.
+		</div>
+	{/if}
+
+	{#if current}
+		<Card padding="1.4rem" glow>
+			<MatchResult match={current} statDefs={data.statDefs} scoringType={data.cg.scoringType} />
+		</Card>
+	{/if}
+
+	<div class="mlist">
+		{#each data.runner.matches as m (m.id)}
+			<div class="mrow" class:current={m.id === data.runner.currentMatchId} class:done={m.status === 'finished'}>
+				<span class="mrow-label">{m.label}</span>
+				{#if m.status === 'finished'}
+					<div class="parts">
+						{#each byPlace(m.participants) as p (p.pid)}
+							<span class="part">{medal(p.placement)} {p.name}</span>
+						{/each}
 					</div>
-				{/each}
+				{:else}
+					<div class="parts">
+						{#each m.participants as p (p.pid)}
+							<span class="part" class:tbd={!p.competitorId}>{p.name ?? p.sourceLabel}</span>
+						{/each}
+					</div>
+				{/if}
 			</div>
 		{/each}
 	</div>
 
-	<Card padding="1.1rem">
-		<div class="next">
-			<span class="muted">Result entry &amp; 3·2·1 scoring arrive in <strong>Phase 5</strong>.</span>
-			<div class="next-actions">
-				<form method="POST" action="?/reset">
-					<Button type="submit" variant="ghost">Change format</Button>
-				</form>
-				<Button href="/competition/{data.cg.competitionId}">Back to competition →</Button>
-			</div>
+	<div class="foot">
+		<Button href="/competition/{data.cg.competitionId}" variant="ghost">← Back to competition</Button>
+	</div>
+{:else}
+	<!-- finished -->
+	{@const podium = data.results.slice(0, 3)}
+	<Card padding="1.6rem" glow>
+		<div class="podium">
+			{#each podium as r, i (r.competitorId)}
+				<div class="pod" class:first={i === 0}>
+					<span class="medal">{['🥇', '🥈', '🥉'][i]}</span>
+					<Avatar name={r.name} color={r.color} size={i === 0 ? 52 : 42} />
+					<span class="pod-name">{r.name}</span>
+					<span class="pod-pts gradient-text">+{r.points}</span>
+				</div>
+			{/each}
 		</div>
 	</Card>
+
+	<div class="results">
+		<h2 class="section-title">Full result</h2>
+		<div class="rtable">
+			{#each data.results as r (r.competitorId)}
+				<div class="rrow">
+					<span class="rrank">{r.rank}</span>
+					<Avatar name={r.name} color={r.color} size={28} />
+					<span class="rname">{r.name}</span>
+					<span class="rpts">{r.points ? `+${r.points}` : '—'}</span>
+				</div>
+			{/each}
+		</div>
+	</div>
+
+	<div class="foot">
+		<Button href="/competition/{data.cg.competitionId}" size="lg">Back to competition →</Button>
+	</div>
 {/if}
 
 <style>
@@ -186,6 +217,7 @@
 		color: var(--text);
 	}
 
+	/* preview */
 	.switcher {
 		display: flex;
 		flex-direction: column;
@@ -226,7 +258,6 @@
 		font-size: 0.78rem;
 		color: var(--text-faint);
 	}
-
 	.summary {
 		display: flex;
 		align-items: center;
@@ -259,7 +290,6 @@
 		font-size: 0.74rem;
 		color: var(--text-faint);
 	}
-
 	.rounds {
 		display: flex;
 		flex-direction: column;
@@ -271,7 +301,7 @@
 		flex-direction: column;
 		gap: 0.5rem;
 	}
-	.match {
+	.pmatch {
 		display: flex;
 		align-items: center;
 		gap: 1rem;
@@ -300,34 +330,135 @@
 		border: 1px solid var(--border);
 		border-radius: var(--r-pill);
 	}
+	.part.tbd {
+		color: var(--text-faint);
+		font-style: italic;
+	}
 	.vs {
 		font-size: 0.75rem;
 		color: var(--text-faint);
 		font-weight: 600;
 	}
-
 	.confirm {
 		display: flex;
 		gap: 0.6rem;
 		margin-top: 0.5rem;
 	}
-	.next {
+
+	/* runner */
+	.progress {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
+		gap: 0.7rem;
+		margin-bottom: 1rem;
+	}
+	.tiebreak {
+		margin-bottom: 1rem;
+		padding: 0.8rem 1.1rem;
+		border: 1px solid #ff2d5544;
+		border-radius: var(--r-md);
+		background: linear-gradient(120deg, #ff2d5514, #ff6a2b14);
+		font-size: 0.92rem;
+		color: var(--text);
+	}
+	.tiebreak strong {
+		color: var(--amber);
+	}
+	.mlist {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		margin: 1.3rem 0;
+	}
+	.mrow {
+		display: flex;
+		align-items: center;
 		gap: 1rem;
+		padding: 0.6rem 0.9rem;
+		border: 1px solid var(--border);
+		border-radius: var(--r-md);
+		background: var(--surface);
 		flex-wrap: wrap;
 	}
-	.next-actions {
-		display: flex;
-		gap: 0.6rem;
+	.mrow.current {
+		border-color: #ff6a2b66;
+	}
+	.mrow.done {
+		opacity: 0.75;
+	}
+	.mrow-label {
+		flex-shrink: 0;
+		min-width: 8rem;
+		font-size: 0.8rem;
+		font-weight: 600;
+		color: var(--text-muted);
 	}
 
-	@media (max-width: 560px) {
-		.match {
-			flex-direction: column;
-			align-items: flex-start;
-			gap: 0.5rem;
-		}
+	/* finished */
+	.podium {
+		display: flex;
+		justify-content: center;
+		align-items: flex-end;
+		gap: clamp(1rem, 5vw, 2.5rem);
+		padding: 0.5rem 0;
+	}
+	.pod {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.4rem;
+	}
+	.pod .medal {
+		font-size: 1.5rem;
+	}
+	.pod.first {
+		transform: translateY(-8px);
+	}
+	.pod-name {
+		font-weight: 600;
+	}
+	.pod-pts {
+		font-family: var(--font-display);
+		font-weight: 700;
+		font-size: 1.3rem;
+	}
+	.results {
+		margin: 1.6rem 0;
+	}
+	.section-title {
+		font-size: 0.82rem;
+		text-transform: uppercase;
+		letter-spacing: 0.12em;
+		color: var(--text-muted);
+		margin-bottom: 0.8rem;
+	}
+	.rtable {
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+		max-width: 460px;
+	}
+	.rrow {
+		display: flex;
+		align-items: center;
+		gap: 0.7rem;
+		padding: 0.5rem;
+		border-radius: var(--r-sm);
+	}
+	.rrank {
+		width: 1.4rem;
+		text-align: center;
+		font-weight: 700;
+		color: var(--text-faint);
+	}
+	.rname {
+		flex: 1;
+	}
+	.rpts {
+		font-family: var(--font-display);
+		font-weight: 700;
+	}
+	.foot {
+		margin-top: 1.5rem;
 	}
 </style>

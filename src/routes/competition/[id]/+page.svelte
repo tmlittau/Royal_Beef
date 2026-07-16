@@ -53,7 +53,9 @@
 						{#if g.status === 'finished'}
 							<Badge tone="cool">✓ Done</Badge>
 						{:else if i === nextIndex}
-							<Button href="/competition/{data.competition.id}/game/{g.cgId}">Set up &amp; play →</Button>
+							<Button href="/competition/{data.competition.id}/game/{g.cgId}">
+								{g.status === 'active' ? 'Continue →' : 'Set up & play →'}
+							</Button>
 						{:else}
 							<Badge>Up next</Badge>
 						{/if}
