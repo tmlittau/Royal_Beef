@@ -30,24 +30,31 @@
 </div>
 
 {#if revealed}
-	<div class="grid">
-		{#each data.games as g (g.id)}
-			<form method="POST" action="?/pick" class="cell">
-				<input type="hidden" name="gameId" value={g.id} />
-				<button type="submit" class="pick">
-					<span class="thumb">
-						{#if g.coverUrl}
-							<img src={g.coverUrl} alt="" loading="lazy" />
-						{:else}
-							<span class="ph">{g.name[0]}</span>
-						{/if}
-					</span>
-					<span class="pname">{g.name}</span>
-					<span class="pmeta">{playerRange(g.minPlayers, g.maxPlayers)}p · {modeLabel(g.defaultMode)}</span>
-				</button>
-			</form>
-		{/each}
-	</div>
+	{#if data.games.length === 0}
+		<div class="empty">
+			<p>Every game in the library has already been drafted tonight.</p>
+			<a class="addlink" href="/library/new">+ Add another game to the library</a>
+		</div>
+	{:else}
+		<div class="grid">
+			{#each data.games as g (g.id)}
+				<form method="POST" action="?/pick" class="cell">
+					<input type="hidden" name="gameId" value={g.id} />
+					<button type="submit" class="pick">
+						<span class="thumb">
+							{#if g.coverUrl}
+								<img src={g.coverUrl} alt="" loading="lazy" />
+							{:else}
+								<span class="ph">{g.name[0]}</span>
+							{/if}
+						</span>
+						<span class="pname">{g.name}</span>
+						<span class="pmeta">{playerRange(g.minPlayers, g.maxPlayers)}p · {modeLabel(g.defaultMode)}</span>
+					</button>
+				</form>
+			{/each}
+		</div>
+	{/if}
 {/if}
 
 <style>
@@ -64,6 +71,17 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
 		gap: 0.7rem;
+	}
+	.empty {
+		text-align: center;
+		padding: 2rem 1rem;
+		color: var(--text-muted);
+	}
+	.addlink {
+		display: inline-block;
+		margin-top: 0.6rem;
+		color: var(--accent);
+		font-weight: 600;
 	}
 	.cell {
 		display: contents;

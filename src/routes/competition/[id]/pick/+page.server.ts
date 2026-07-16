@@ -1,5 +1,5 @@
 import { db, schema } from '$lib/server/db';
-import { getPickState, pickGame } from '$lib/server/picking';
+import { getPickState, getPickableGames, pickGame } from '$lib/server/picking';
 import { error, redirect } from '@sveltejs/kit';
 import { asc, eq } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
@@ -23,7 +23,7 @@ export const load: PageServerLoad = ({ params }) => {
 		.where(eq(schema.competitors.competitionId, id))
 		.orderBy(asc(schema.competitors.id))
 		.all();
-	const games = db.select().from(schema.games).orderBy(asc(schema.games.name)).all();
+	const games = getPickableGames(id);
 
 	return { competitionId: id, competitionName: comp.name, pick: getPickState(id), competitors, games };
 };

@@ -10,8 +10,9 @@ services:
       # DB + cover art live on the mounted volume so they survive rebuilds.
       DATABASE_URL: /app/data/royalbeef.db
       COVERS_DIR: /app/data/covers
-      # Controller images (your own static assets) are bind-mounted in below and
-      # scanned into the inventory on boot.
+      # Controller images: uploaded in-app (Controllers page) or dropped into the
+      # bind-mounted folder below. Either way they land in ./data/controllers on the
+      # host and are re-scanned into the inventory on boot.
       CONTROLLERS_DIR: /app/data/controllers
       HOST: 0.0.0.0
       PORT: "3000"
@@ -22,9 +23,10 @@ services:
       BODY_SIZE_LIMIT: 10M
     volumes:
       - royalbeef-data:/app/data
-      # Your controller images, mounted read-only so the seed can scan them into
-      # the inventory. Add/remove images here, then restart to re-sync.
-      - ./data/controllers:/app/data/controllers:ro
+      # Controller images live here on the host so in-app uploads persist and you can
+      # also drop files in directly (TrueNAS: point this at a dataset). Read-write so
+      # the Controllers page can save uploads; the seed re-scans it on every boot.
+      - ./data/controllers:/app/data/controllers
 
 volumes:
   royalbeef-data:

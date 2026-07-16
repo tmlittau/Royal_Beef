@@ -4,7 +4,8 @@
 
 	const links = [
 		{ href: '/', label: 'Dashboard' },
-		{ href: '/library', label: 'Library' }
+		{ href: '/library', label: 'Library' },
+		{ href: '/controllers', label: 'Controllers' }
 	];
 
 	let path = $derived($page.url.pathname);

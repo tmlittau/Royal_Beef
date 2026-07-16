@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, notInArray, sql } from 'drizzle-orm';
 import { db, schema } from './db';
 
 export const CONTROLLERS_DIR = process.env.CONTROLLERS_DIR ?? 'data/controllers';
@@ -30,6 +30,22 @@ export function computeNextPicker(
 	const pool = competitorIds.filter((id) => !pickedThisRound.has(id));
 	if (pool.length === 0) return null;
 	return pool[Math.floor(Math.random() * pool.length)];
+}
+
+/** Library games not yet drafted in this competition — no repeats within one night. */
+export function getPickableGames(competitionId: number) {
+	const pickedIds = db
+		.select({ gameId: schema.competitionGames.gameId })
+		.from(schema.competitionGames)
+		.where(eq(schema.competitionGames.competitionId, competitionId))
+		.all()
+		.map((r) => r.gameId);
+	return db
+		.select()
+		.from(schema.games)
+		.where(pickedIds.length ? notInArray(schema.games.id, pickedIds) : undefined)
+		.orderBy(asc(schema.games.name))
+		.all();
 }
 
 /* ------------------------------------------------------------------ *
@@ -227,6 +243,19 @@ export function pickGame(competitionId: number, gameId: number): number | null {
 		if (!comp || comp.status !== 'active' || comp.currentPickerId == null) return null;
 		const game = tx.select().from(schema.games).where(eq(schema.games.id, gameId)).get();
 		if (!game) return null;
+
+		// No repeats: reject a game that's already been drafted this competition.
+		const already = tx
+			.select({ id: schema.competitionGames.id })
+			.from(schema.competitionGames)
+			.where(
+				and(
+					eq(schema.competitionGames.competitionId, competitionId),
+					eq(schema.competitionGames.gameId, gameId)
+				)
+			)
+			.get();
+		if (already) return null;
 
 		const competitorIds = tx
 			.select({ id: schema.competitors.id })
