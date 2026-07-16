@@ -9,6 +9,7 @@ import type { ScoringType } from '$lib/games';
 import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm';
 import { db, schema } from './db';
 import { refToText } from './materialize';
+import { computeNextPicker } from './picking';
 
 function ordinal(n: number): string {
 	const s = ['th', 'st', 'nd', 'rd'];
@@ -326,17 +327,29 @@ export function saveMatchResult(matchId: number, entries: SaveEntry[]): void {
 			.where(eq(schema.competitionGames.id, cgId))
 			.run();
 
-		const remComp = tx
-			.select({ n: sql<number>`count(*)` })
+		// Dynamic picking: either hand off to the next picker, or finish the competition.
+		const playerCount = competitorRows.length;
+		const totalTarget = (competition?.gamesPerPlayer ?? 2) * playerCount;
+		const allGames = tx
+			.select({
+				pickedBy: schema.competitionGames.pickedBy,
+				pickRound: schema.competitionGames.pickRound,
+				status: schema.competitionGames.status
+			})
 			.from(schema.competitionGames)
-			.where(
-				and(
-					eq(schema.competitionGames.competitionId, cg.competitionId),
-					ne(schema.competitionGames.status, 'finished')
-				)
-			)
-			.get();
-		if ((remComp?.n ?? 0) === 0) {
+			.where(eq(schema.competitionGames.competitionId, cg.competitionId))
+			.all();
+
+		if (allGames.length < totalTarget) {
+			const next = computeNextPicker(
+				allGames.map((g) => ({ pickedBy: g.pickedBy, pickRound: g.pickRound })),
+				competitorRows.map((c) => c.id)
+			);
+			tx.update(schema.competitions)
+				.set({ currentPickerId: next })
+				.where(eq(schema.competitions.id, cg.competitionId))
+				.run();
+		} else if (allGames.every((g) => g.status === 'finished')) {
 			tx.update(schema.competitions)
 				.set({ status: 'finished', finishedAt: new Date() })
 				.where(eq(schema.competitions.id, cg.competitionId))

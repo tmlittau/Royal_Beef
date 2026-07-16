@@ -12,11 +12,10 @@
 <div class="stack head">
 	<span class="eyebrow">Set up</span>
 	<h1>New <span class="gradient-text">competition.</span></h1>
-	<p class="muted">Add your crew, pick the games, and start the night.</p>
+	<p class="muted">Add your crew and set how many games each plays — you'll pick weapons next.</p>
 </div>
 
 <CompetitionSetup
-	games={data.games}
 	suggestedName={data.suggestedName}
 	initial={form?.values ?? {}}
 	errors={form?.errors ?? {}}

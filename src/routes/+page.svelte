@@ -23,9 +23,9 @@
 			the <span class="gradient-text">couch.</span>
 		</h1>
 		<p class="lede muted">
-			Enter your crew, pick from the library, and Royal Beef builds a time-feasible
-			tournament for every game — tracking points, stats, and crowning one champion at the
-			end of the night.
+			Enter your crew, draft your controllers, then take turns picking games — Royal Beef
+			builds a time-feasible tournament for each, tracking points and stats to crown one
+			champion at the end of the night.
 		</p>
 		<div class="actions row">
 			<Button href="/competition/new" size="lg">Start a competition →</Button>
@@ -52,7 +52,8 @@
 			</div>
 			<div class="chips row">
 				<Badge tone="cool">◆ Database connected</Badge>
-				<Badge tone="accent">Phase 6 · tiebreaks</Badge>
+				<Badge tone="cool">🏆 Core complete</Badge>
+				<Badge tone="accent">⚔️ Weapon draft</Badge>
 			</div>
 			<p class="faint hint">
 				{#if data.gameCount === 0}
@@ -73,7 +74,12 @@
 		</div>
 		<div class="comps-grid">
 			{#each data.competitions as c (c.id)}
-				<a class="comp" href="/competition/{c.id}">
+				<a
+					class="comp"
+					href={c.status === 'finished'
+						? `/competition/${c.id}/results`
+						: `/competition/${c.id}`}
+				>
 					<div class="comp-top">
 						<strong>{c.name}</strong>
 						{#if c.status === 'finished'}

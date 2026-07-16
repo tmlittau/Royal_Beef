@@ -10,6 +10,9 @@ services:
       # DB + cover art live on the mounted volume so they survive rebuilds.
       DATABASE_URL: /app/data/royalbeef.db
       COVERS_DIR: /app/data/covers
+      # Controller images (your own static assets) are bind-mounted in below and
+      # scanned into the inventory on boot.
+      CONTROLLERS_DIR: /app/data/controllers
       HOST: 0.0.0.0
       PORT: "3000"
       # Required by adapter-node so SvelteKit knows its own origin — without this,
@@ -19,6 +22,9 @@ services:
       BODY_SIZE_LIMIT: 10M
     volumes:
       - royalbeef-data:/app/data
+      # Your controller images, mounted read-only so the seed can scan them into
+      # the inventory. Add/remove images here, then restart to re-sync.
+      - ./data/controllers:/app/data/controllers:ro
 
 volumes:
   royalbeef-data:

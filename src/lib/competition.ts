@@ -3,6 +3,6 @@
 export type CompetitionFormInitial = {
 	name?: string;
 	timeBudgetMinutes?: number;
+	gamesPerPlayer?: number;
 	competitorNames?: string[];
-	gameIds?: number[];
 };

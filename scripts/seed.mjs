@@ -1,8 +1,39 @@
-// Seeds the starter game library. Idempotent: only runs when `games` is empty,
-// so it is safe to call on every Docker boot. Uses raw SQL (no TS schema import).
+// Seeds the starter game library (only when empty) and syncs the controller
+// inventory from the images folder (always, idempotent). Safe on every Docker boot.
 import Database from 'better-sqlite3';
+import { existsSync, readdirSync } from 'node:fs';
 
 const url = process.env.DATABASE_URL ?? 'royalbeef.db';
+const CONTROLLERS_DIR = process.env.CONTROLLERS_DIR ?? 'data/controllers';
+
+const prettyLabel = (file) =>
+	file
+		.replace(/\.[^.]+$/, '')
+		.split(/[-_]/)
+		.map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+		.join(' ');
+
+function syncControllers(db) {
+	if (!existsSync(CONTROLLERS_DIR)) {
+		console.log(`[seed] no controllers dir at ${CONTROLLERS_DIR} — skipping controllers.`);
+		return;
+	}
+	const files = readdirSync(CONTROLLERS_DIR)
+		.filter((f) => /\.(png|jpe?g|webp|svg)$/i.test(f))
+		.sort();
+	const existing = new Set(db.prepare('SELECT image FROM controllers').all().map((r) => r.image));
+	const insert = db.prepare(
+		'INSERT INTO controllers (image, label, quantity, sort_index) VALUES (?, ?, 1, ?)'
+	);
+	let added = 0;
+	files.forEach((f, i) => {
+		if (!existing.has(f)) {
+			insert.run(f, prettyLabel(f), i);
+			added++;
+		}
+	});
+	console.log(`[seed] controllers: ${files.length} image(s), ${added} new.`);
+}
 
 // Stat helpers keep the data below readable.
 const count = (label, higherIsBetter = true) => ({
@@ -54,38 +85,39 @@ const GAMES = [
 const db = new Database(url);
 db.pragma('foreign_keys = ON');
 
+// Games — only when the library is empty.
 const existing = db.prepare('SELECT COUNT(*) AS n FROM games').get().n;
 if (existing > 0) {
-	console.log(`[seed] games table already has ${existing} rows — skipping.`);
-	db.close();
-	process.exit(0);
+	console.log(`[seed] games table already has ${existing} rows — skipping games.`);
+} else {
+	const insert = db.prepare(`
+		INSERT INTO games
+			(name, min_players, max_players, default_round_minutes, supported_modes,
+			 default_mode, team_size, scoring_type, stat_definitions, description)
+		VALUES
+			(@name, @min, @max, @roundMin, @modes, @defaultMode, @teamSize, @scoring, @stats, @description)
+	`);
+	const insertAll = db.transaction((rows) => {
+		for (const [name, min, max, roundMin, modes, defaultMode, teamSize, scoring, stats, description] of rows) {
+			insert.run({
+				name,
+				min,
+				max,
+				roundMin,
+				modes: JSON.stringify(modes),
+				defaultMode,
+				teamSize,
+				scoring,
+				stats: JSON.stringify(stats),
+				description
+			});
+		}
+	});
+	insertAll(GAMES);
+	console.log(`[seed] inserted ${GAMES.length} games into ${url}`);
 }
 
-const insert = db.prepare(`
-	INSERT INTO games
-		(name, min_players, max_players, default_round_minutes, supported_modes,
-		 default_mode, team_size, scoring_type, stat_definitions, description)
-	VALUES
-		(@name, @min, @max, @roundMin, @modes, @defaultMode, @teamSize, @scoring, @stats, @description)
-`);
+// Controllers — always sync from the images folder (idempotent).
+syncControllers(db);
 
-const insertAll = db.transaction((rows) => {
-	for (const [name, min, max, roundMin, modes, defaultMode, teamSize, scoring, stats, description] of rows) {
-		insert.run({
-			name,
-			min,
-			max,
-			roundMin,
-			modes: JSON.stringify(modes),
-			defaultMode,
-			teamSize,
-			scoring,
-			stats: JSON.stringify(stats),
-			description
-		});
-	}
-});
-
-insertAll(GAMES);
-console.log(`[seed] inserted ${GAMES.length} games into ${url}`);
 db.close();

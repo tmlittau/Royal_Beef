@@ -43,12 +43,23 @@ export const games = sqliteTable('games', {
 });
 
 /* ---------------------------------------------------------------- *
+ * Controller inventory ("weapons") — synced from the images folder
+ * ---------------------------------------------------------------- */
+export const controllers = sqliteTable('controllers', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	image: text('image').notNull().unique(),
+	label: text('label').notNull(),
+	quantity: integer('quantity').notNull().default(1),
+	sortIndex: integer('sort_index').notNull().default(0)
+});
+
+/* ---------------------------------------------------------------- *
  * Competition (an event / session)
  * ---------------------------------------------------------------- */
 export const competitions = sqliteTable('competitions', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
 	name: text('name').notNull(),
-	status: text('status', { enum: ['setup', 'active', 'finished'] })
+	status: text('status', { enum: ['setup', 'controllers', 'active', 'finished'] })
 		.notNull()
 		.default('setup'),
 	pointsScheme: text('points_scheme', { mode: 'json' })
@@ -56,6 +67,14 @@ export const competitions = sqliteTable('competitions', {
 		.notNull()
 		.default(sql`'[3,2,1]'`),
 	timeBudgetMinutes: integer('time_budget_minutes').notNull().default(30),
+	// Dynamic picking: n games per player, plus current pick state.
+	gamesPerPlayer: integer('games_per_player').notNull().default(2),
+	currentPickerId: integer('current_picker_id'),
+	controllerOrder: text('controller_order', { mode: 'json' })
+		.$type<number[]>()
+		.notNull()
+		.default(sql`'[]'`),
+	controllerPickIndex: integer('controller_pick_index').notNull().default(0),
 	createdAt: integer('created_at', { mode: 'timestamp' })
 		.notNull()
 		.default(sql`(unixepoch())`),
@@ -69,7 +88,8 @@ export const competitors = sqliteTable('competitors', {
 		.references(() => competitions.id, { onDelete: 'cascade' }),
 	name: text('name').notNull(),
 	color: text('color').notNull().default('#ff6a2b'),
-	seed: integer('seed')
+	seed: integer('seed'),
+	controllerId: integer('controller_id').references(() => controllers.id)
 });
 
 /* ---------------------------------------------------------------- *
@@ -84,6 +104,8 @@ export const competitionGames = sqliteTable('competition_games', {
 		.notNull()
 		.references(() => games.id),
 	orderIndex: integer('order_index').notNull().default(0),
+	pickedBy: integer('picked_by'),
+	pickRound: integer('pick_round'),
 	status: text('status', { enum: ['pending', 'active', 'finished'] })
 		.notNull()
 		.default('pending'),
@@ -206,6 +228,7 @@ export const steamAppCache = sqliteTable('steam_app_cache', {
  * ---------------------------------------------------------------- */
 export type Game = typeof games.$inferSelect;
 export type NewGame = typeof games.$inferInsert;
+export type Controller = typeof controllers.$inferSelect;
 export type Competition = typeof competitions.$inferSelect;
 export type Competitor = typeof competitors.$inferSelect;
 export type CompetitionGame = typeof competitionGames.$inferSelect;

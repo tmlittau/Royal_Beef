@@ -7,9 +7,12 @@
 
 	let { data }: { data: PageData } = $props();
 
-	let nextIndex = $derived(data.games.findIndex((g) => g.status !== 'finished'));
-	let playedCount = $derived(data.games.filter((g) => g.status === 'finished').length);
-	let allZero = $derived(data.standings.every((s) => s.points === 0));
+	const id = $derived(data.competition.id);
+	const status = $derived(data.competition.status);
+	const totalGames = $derived(data.pick?.totalGames ?? 0);
+	const playedCount = $derived(data.games.filter((g) => g.status === 'finished').length);
+	const activeGame = $derived(data.games.find((g) => g.cgId === data.activeGameId) ?? null);
+	const allZero = $derived(data.standings.every((s) => s.points === 0));
 </script>
 
 <svelte:head>
@@ -19,25 +22,50 @@
 <div class="head">
 	<div class="stack heading">
 		<span class="eyebrow">
-			{#if data.competition.status === 'finished'}Finished{:else}In progress{/if} ·
-			{playedCount}/{data.games.length} games
+			{#if status === 'controllers'}Picking weapons
+			{:else if status === 'finished'}Finished · {totalGames} games
+			{:else}In progress · {playedCount}/{totalGames} games · round {data.pick?.round}/{data.pick
+					?.totalRounds}{/if}
 		</span>
 		<h1>{data.competition.name}</h1>
 		<p class="muted">
-			{data.standings.length} players · {data.games.length} games · target {data.competition
-				.timeBudgetMinutes}m each
+			{data.standings.length} players · {data.competition.gamesPerPlayer} games each · target {data
+				.competition.timeBudgetMinutes}m
 		</p>
 	</div>
 </div>
 
+<!-- Primary action -->
+{#if status === 'controllers'}
+	<a class="banner weapons" href="/competition/{id}/controllers">
+		<span>⚔️ <strong>Pick your weapons</strong> — choose controllers to begin</span>
+		<span class="arrow">→</span>
+	</a>
+{:else if status === 'finished'}
+	<a class="banner" href="/competition/{id}/results">
+		<span>🏆 <strong>Competition complete</strong> — see the champion &amp; highlights</span>
+		<span class="arrow">→</span>
+	</a>
+{:else if activeGame}
+	<a class="banner" href="/competition/{id}/game/{activeGame.cgId}">
+		<span>▶ <strong>Continue</strong> — {activeGame.name}</span>
+		<span class="arrow">→</span>
+	</a>
+{:else if data.pick?.currentPickerId != null}
+	<a class="banner pick" href="/competition/{id}/pick">
+		<span>🎲 <strong>{data.pick.currentName}'s turn</strong> — pick game {data.pick.pickNumber} of {totalGames}</span>
+		<span class="arrow">→</span>
+	</a>
+{/if}
+
 <div class="layout">
-	<!-- Rounds -->
+	<!-- Games so far -->
 	<section class="rounds">
-		<h2 class="section-title">Rounds</h2>
+		<h2 class="section-title">Games</h2>
 		<div class="stack list">
-			{#each data.games as g, i (g.cgId)}
-				<div class="round" class:next={i === nextIndex} class:done={g.status === 'finished'}>
-					<span class="idx">{i + 1}</span>
+			{#each data.games as g (g.cgId)}
+				<div class="round" class:done={g.status === 'finished'}>
+					<span class="idx">{g.orderIndex + 1}</span>
 					<span class="cover">
 						{#if g.coverUrl}
 							<img src={g.coverUrl} alt="" loading="lazy" />
@@ -47,21 +75,26 @@
 					</span>
 					<div class="info">
 						<strong>{g.name}</strong>
-						<span class="meta">{modeLabel(g.mode)} · ~{g.roundMinutes}m</span>
+						<span class="meta">
+							{#if g.pickedByName}
+								<Avatar name={g.pickedByName} color={g.pickedByColor ?? '#ff6a2b'} size={16} />
+								{g.pickedByName}'s pick ·
+							{/if}
+							{modeLabel(g.mode)}
+						</span>
 					</div>
 					<div class="state">
 						{#if g.status === 'finished'}
 							<Badge tone="cool">✓ Done</Badge>
-						{:else if i === nextIndex}
-							<Button href="/competition/{data.competition.id}/game/{g.cgId}">
-								{g.status === 'active' ? 'Continue →' : 'Set up & play →'}
-							</Button>
 						{:else}
-							<Badge>Up next</Badge>
+							<Button href="/competition/{id}/game/{g.cgId}">Continue →</Button>
 						{/if}
 					</div>
 				</div>
 			{/each}
+			{#if data.games.length === 0}
+				<p class="faint empty">No games picked yet — the first pick is coming up.</p>
+			{/if}
 		</div>
 	</section>
 
@@ -74,6 +107,9 @@
 					<span class="rank">{i + 1}</span>
 					<Avatar name={s.name} color={s.color} size={30} />
 					<span class="sname">{s.name}</span>
+					{#if s.controllerImage}
+						<img class="ctrl" src="/controllers/{s.controllerImage}" alt="" title="weapon" />
+					{/if}
 					<span class="pts">{s.points}</span>
 				</div>
 			{/each}
@@ -90,15 +126,40 @@
 
 <style>
 	.head {
-		margin-bottom: 1.8rem;
+		margin-bottom: 1.6rem;
 	}
+	.banner {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		margin-bottom: 1.6rem;
+		padding: 1rem 1.3rem;
+		border: 1px solid #ff6a2b55;
+		border-radius: var(--r-md);
+		background: var(--accent-soft);
+		box-shadow: var(--shadow-glow);
+		transition: transform 0.2s var(--ease);
+	}
+	.banner:hover {
+		transform: translateY(-2px);
+	}
+	.banner.weapons {
+		border-color: #35e0c155;
+		background: var(--cool-soft);
+		box-shadow: 0 20px 60px -20px #35e0c140;
+	}
+	.banner .arrow {
+		font-size: 1.2rem;
+		color: var(--amber);
+	}
+
 	.heading {
 		gap: 0.5rem;
 	}
 	h1 {
 		font-size: clamp(2rem, 4.5vw, 3rem);
 	}
-
 	.layout {
 		display: grid;
 		grid-template-columns: 1.6fr 1fr;
@@ -112,9 +173,12 @@
 		color: var(--text-muted);
 		margin-bottom: 0.9rem;
 	}
-
 	.list {
 		gap: 0.65rem;
+	}
+	.empty {
+		font-size: 0.9rem;
+		padding: 0.5rem 0;
 	}
 	.round {
 		display: flex;
@@ -124,15 +188,9 @@
 		border: 1px solid var(--border);
 		border-radius: var(--r-md);
 		background: var(--surface);
-		transition: border-color 0.2s var(--ease);
-	}
-	.round.next {
-		border-color: #ff6a2b80;
-		box-shadow: var(--shadow-glow);
-		background: var(--accent-soft);
 	}
 	.round.done {
-		opacity: 0.72;
+		opacity: 0.75;
 	}
 	.idx {
 		display: grid;
@@ -170,7 +228,7 @@
 	.info {
 		display: flex;
 		flex-direction: column;
-		gap: 0.1rem;
+		gap: 0.15rem;
 		flex: 1;
 		min-width: 0;
 	}
@@ -181,13 +239,15 @@
 		text-overflow: ellipsis;
 	}
 	.meta {
+		display: flex;
+		align-items: center;
+		gap: 0.3rem;
 		font-size: 0.78rem;
 		color: var(--text-faint);
 	}
 	.state {
 		flex-shrink: 0;
 	}
-
 	.standings {
 		padding: 1.1rem 1.2rem;
 		border: 1px solid var(--border);
@@ -225,6 +285,14 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
+	.ctrl {
+		height: 26px;
+		width: 38px;
+		object-fit: contain;
+		padding: 2px 4px;
+		border-radius: 6px;
+		background: radial-gradient(closest-side at 50% 45%, #ffffff40, #ffffff12 70%, transparent);
+	}
 	.pts {
 		font-family: var(--font-display);
 		font-weight: 700;
@@ -235,7 +303,6 @@
 		font-size: 0.78rem;
 		line-height: 1.5;
 	}
-
 	.foot {
 		margin-top: 2rem;
 	}

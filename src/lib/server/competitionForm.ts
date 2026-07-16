@@ -4,11 +4,11 @@ import { z } from 'zod';
 const schema = z.object({
 	name: z.string().trim().min(1, 'Give the competition a name').max(120),
 	timeBudgetMinutes: z.number().int().min(5).max(240),
+	gamesPerPlayer: z.number().int().min(1, 'At least 1 game per player').max(10),
 	competitorNames: z
 		.array(z.string().trim().min(1).max(40))
 		.min(2, 'Add at least 2 competitors')
-		.max(32),
-	gameIds: z.array(z.number().int().positive()).min(1, 'Pick at least one game')
+		.max(32)
 });
 
 export type CompetitionFormValues = z.infer<typeof schema>;
@@ -33,15 +33,11 @@ export function parseCompetitionForm(form: FormData): ParseResult {
 		.map((v) => (typeof v === 'string' ? v.trim() : ''))
 		.filter((v) => v.length > 0);
 
-	const gameIds = parseJsonArray(str(form.get('gameIds')))
-		.map((v) => Number(v))
-		.filter((v) => Number.isInteger(v) && v > 0);
-
 	const raw = {
 		name: str(form.get('name')).trim(),
 		timeBudgetMinutes: Number(str(form.get('timeBudgetMinutes'))),
-		competitorNames,
-		gameIds
+		gamesPerPlayer: Number(str(form.get('gamesPerPlayer'))),
+		competitorNames
 	};
 
 	const parsed = schema.safeParse(raw);
@@ -59,8 +55,8 @@ export function parseCompetitionForm(form: FormData): ParseResult {
 				timeBudgetMinutes: Number.isFinite(raw.timeBudgetMinutes)
 					? raw.timeBudgetMinutes
 					: undefined,
-				competitorNames: raw.competitorNames,
-				gameIds: raw.gameIds
+				gamesPerPlayer: Number.isFinite(raw.gamesPerPlayer) ? raw.gamesPerPlayer : undefined,
+				competitorNames: raw.competitorNames
 			}
 		};
 	}

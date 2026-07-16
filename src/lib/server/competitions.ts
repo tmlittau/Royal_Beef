@@ -1,51 +1,46 @@
 import { colorForIndex } from '$lib/games';
 import { asc, desc, eq, sql } from 'drizzle-orm';
 import { db, schema } from './db';
+import { getPickState, shuffle } from './picking';
 
 export type CreateCompetitionInput = {
 	name: string;
 	timeBudgetMinutes: number;
+	gamesPerPlayer: number;
 	competitorNames: string[];
-	gameIds: number[];
 };
 
-/** Create a competition with its competitors and ordered games, in one transaction. */
+/**
+ * Create a competition + competitors and start it in the "controllers" phase.
+ * Games are picked dynamically later; the reveal order is a shuffle of the competitors.
+ */
 export function createCompetition(input: CreateCompetitionInput): number {
 	return db.transaction((tx) => {
 		const comp = tx
 			.insert(schema.competitions)
 			.values({
 				name: input.name,
-				status: 'active',
-				timeBudgetMinutes: input.timeBudgetMinutes
+				status: 'controllers',
+				timeBudgetMinutes: input.timeBudgetMinutes,
+				gamesPerPlayer: input.gamesPerPlayer
 			})
 			.returning({ id: schema.competitions.id })
 			.get();
 
+		const ids: number[] = [];
 		input.competitorNames.forEach((name, i) => {
-			tx.insert(schema.competitors)
+			const c = tx
+				.insert(schema.competitors)
 				.values({ competitionId: comp.id, name, color: colorForIndex(i) })
-				.run();
+				.returning({ id: schema.competitors.id })
+				.get();
+			ids.push(c.id);
 		});
 
-		input.gameIds.forEach((gameId, order) => {
-			const g = tx.select().from(schema.games).where(eq(schema.games.id, gameId)).get();
-			if (!g) return;
-			tx.insert(schema.competitionGames)
-				.values({
-					competitionId: comp.id,
-					gameId,
-					orderIndex: order,
-					status: 'pending',
-					mode: g.defaultMode,
-					maxPlayers: g.maxPlayers,
-					roundMinutes: g.defaultRoundMinutes,
-					teamSize: g.teamSize,
-					formatType: null, // decided by the format engine in Phase 4
-					formatConfig: {}
-				})
-				.run();
-		});
+		tx.update(schema.competitions)
+			.set({ controllerOrder: shuffle(ids) })
+			.where(eq(schema.competitions.id, comp.id))
+			.run();
 
 		return comp.id;
 	});
@@ -55,6 +50,7 @@ export type StandingRow = {
 	id: number;
 	name: string;
 	color: string;
+	controllerImage: string | null;
 	points: number;
 	gamesPlayed: number;
 };
@@ -66,11 +62,13 @@ export function getStandings(competitionId: number): StandingRow[] {
 			id: schema.competitors.id,
 			name: schema.competitors.name,
 			color: schema.competitors.color,
+			controllerImage: schema.controllers.image,
 			points: sql<number>`coalesce(sum(${schema.gameResults.competitionPoints}), 0)`,
 			gamesPlayed: sql<number>`count(${schema.gameResults.id})`
 		})
 		.from(schema.competitors)
 		.leftJoin(schema.gameResults, eq(schema.gameResults.competitorId, schema.competitors.id))
+		.leftJoin(schema.controllers, eq(schema.controllers.id, schema.competitors.controllerId))
 		.where(eq(schema.competitors.competitionId, competitionId))
 		.groupBy(schema.competitors.id)
 		.orderBy(
@@ -91,6 +89,9 @@ export type CompetitionGameRow = {
 	formatType: string | null;
 	name: string;
 	coverUrl: string | null;
+	pickRound: number | null;
+	pickedByName: string | null;
+	pickedByColor: string | null;
 };
 
 /** Full overview for the competition hub. */
@@ -113,21 +114,31 @@ export function getCompetitionOverview(competitionId: number) {
 			roundMinutes: schema.competitionGames.roundMinutes,
 			formatType: schema.competitionGames.formatType,
 			name: schema.games.name,
-			coverUrl: schema.games.coverUrl
+			coverUrl: schema.games.coverUrl,
+			pickRound: schema.competitionGames.pickRound,
+			pickedByName: schema.competitors.name,
+			pickedByColor: schema.competitors.color
 		})
 		.from(schema.competitionGames)
 		.innerJoin(schema.games, eq(schema.games.id, schema.competitionGames.gameId))
+		.leftJoin(schema.competitors, eq(schema.competitors.id, schema.competitionGames.pickedBy))
 		.where(eq(schema.competitionGames.competitionId, competitionId))
 		.orderBy(asc(schema.competitionGames.orderIndex))
 		.all();
 
-	return { competition, standings: getStandings(competitionId), games };
+	return {
+		competition,
+		standings: getStandings(competitionId),
+		games,
+		pick: getPickState(competitionId),
+		activeGameId: games.find((g) => g.status !== 'finished')?.cgId ?? null
+	};
 }
 
 export type CompetitionListRow = {
 	id: number;
 	name: string;
-	status: 'setup' | 'active' | 'finished';
+	status: 'setup' | 'controllers' | 'active' | 'finished';
 	createdAt: Date;
 	competitorCount: number;
 	gameCount: number;

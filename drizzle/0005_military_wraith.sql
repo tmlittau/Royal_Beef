@@ -1,0 +1,1 @@
+ALTER TABLE `competitions` ADD `controller_pick_index` integer DEFAULT 0 NOT NULL;
