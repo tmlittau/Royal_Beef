@@ -65,6 +65,19 @@ export function endCompetitionEarly(competitionId: number): boolean {
 	return true;
 }
 
+/**
+ * Permanently delete a competition and everything under it. FK `ON DELETE CASCADE`
+ * (with foreign_keys ON) removes its competitors, games, matches, results and stats.
+ * Library games and controllers are untouched. Returns false if it didn't exist.
+ */
+export function deleteCompetition(competitionId: number): boolean {
+	const res = db
+		.delete(schema.competitions)
+		.where(eq(schema.competitions.id, competitionId))
+		.run();
+	return res.changes > 0;
+}
+
 export type StandingRow = {
 	id: number;
 	name: string;
